@@ -1,0 +1,53 @@
+package com.codewarrior.URLShortener.impl;
+
+import java.net.URI;
+
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
+
+import com.codewarrior.URLShortener.IURLShortener;
+import com.codewarrior.URLShortener.dao.URLShortenerDao;
+import com.codewarrior.URLShortener.domain.ShortenURL;
+import com.codewarrior.URLShortener.exception.InvalidURLException;
+import com.codewarrior.URLShortener.utils.URLEncoderDecoder;
+
+public class URLShortenerImpl implements IURLShortener {
+	private final static String URL_PREFIX = "http://cdwr.com/";
+	private static final String CASSANDRA_HOST = "127.0.0.1";
+	private URLEncoderDecoder urlEncodedDecoder;
+	private URLShortenerDao urlShortenerDao;
+	
+	public URLShortenerImpl() {
+		urlShortenerDao = new URLShortenerDao(CASSANDRA_HOST);
+		urlEncodedDecoder = new URLEncoderDecoder();
+	}
+	
+	@Override
+	public Response shortenURL(ShortenURL request) throws InvalidURLException {
+		String url = request.getLongURL();
+		if(url==null || url.length()==0 || !isValidURL(url))
+			throw new InvalidURLException();
+		long key = urlShortenerDao.getKey();
+		String encodedKey = urlEncodedDecoder.encode(key);
+		urlShortenerDao.saveURL(encodedKey, key);
+		String result = URL_PREFIX + encodedKey;
+		return Response.status(200).entity(result).build();
+	}
+
+	@Override
+	public Response redirect(String shortURL) throws InvalidURLException {
+		if(shortURL == null || shortURL.length()==0 || !isValidURL(shortURL))
+			throw new InvalidURLException();
+		String base62Key = shortURL.substring(shortURL.lastIndexOf(URL_PREFIX)+URL_PREFIX.length());
+		long decodedKey = urlEncodedDecoder.decode(base62Key);
+		String longURL = urlShortenerDao.getLongURLFromDB(decodedKey);
+		UriBuilder uriBuilder = UriBuilder.fromPath(longURL).scheme("http");
+		URI uri = uriBuilder.build();
+		return Response.seeOther(uri).build();
+	}
+	
+	private boolean isValidURL(String url) {
+		return true;
+	}
+
+}
